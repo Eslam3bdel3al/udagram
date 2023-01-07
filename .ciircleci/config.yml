@@ -1,0 +1,63 @@
+version: 2.1
+orbs:
+  node: circleci/node@5.0.2
+  aws-cli: circleci/aws-cli@3.1.1
+  eb: circleci/aws-elastic-beanstalk@2.0.1
+jobs:
+  build:
+    docker:
+      - image: "cimg/node:16.15"
+    steps:
+      - node/install:
+          node-version: '16.15.0'         
+      - checkout
+      - run:
+          name: Install Front-End Dependencies
+          command: |
+            npm run frontend:install
+      - run:
+          name: Install Back-end API Dependencies
+          command: |
+           npm run server:install
+      - run:
+          name: Front-End Building
+          command: |
+            echo "Building the frontend app ..."
+            npm run frontend:build
+      - run:
+          name: Back-end API Building
+          command: |
+            echo "Building the backend API app ..."
+            npm run server:build
+  deploy:
+    docker:
+      - image: "cimg/base:stable"
+    steps:
+      - node/install:
+          node-version: '16.15' 
+      - eb/setup
+      - aws-cli/setup
+      - checkout
+      - run:
+          name: Deploy App
+          context: aws
+          command: |
+            eb init udagram-api --platform node.js --region us-east-1
+            eb use udagram-api-dev
+            eb setenv AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY AWS_REGION=$AWS_REGION DB_PORT=$DB_PORT JWT_SECRET=$JWT_SECRET PORT=$PORT  POSTGRES_DB=$POSTGRES_DB POSTGRES_HOST=$POSTGRES_HOST POSTGRES_PASSWORD=$POSTGRES_PASSWORD POSTGRES_USERNAME=$POSTGRES_USERNAME RDS_DIALECT=$RDS_DIALECT
+            npm run deploy
+    
+workflows:
+  udagram:
+    jobs:
+      - build
+      - deploy
+      - hold:
+          filters:
+            branches:
+              only:
+                - master
+          type: approval
+          requires:
+            - build
+            - deploy
